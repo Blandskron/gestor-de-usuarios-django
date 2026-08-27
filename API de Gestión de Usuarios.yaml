@@ -2,12 +2,14 @@ openapi: 3.0.3
 info:
   title: API de Gestión de Usuarios
   version: 1.0.0
-  description: CRUD de usuarios, login y logout
+  description: CRUD de usuarios, autenticación JWT y autorización administrativa.
 paths:
   /api/users/crud/:
     get:
       operationId: api_users_crud_list
-      description: Obtiene la lista de todos los usuarios.
+      description: |-
+        Gestiona el ciclo de vida completo de los usuarios.
+        Solo accesible para administradores.
       summary: Listar usuarios
       tags:
       - Usuarios
@@ -25,7 +27,9 @@ paths:
           description: ''
     post:
       operationId: api_users_crud_create
-      description: Registra un nuevo usuario en el sistema.
+      description: |-
+        Gestiona el ciclo de vida completo de los usuarios.
+        Solo accesible para administradores.
       summary: Crear usuario
       tags:
       - Usuarios
@@ -54,14 +58,16 @@ paths:
   /api/users/crud/{id}/:
     get:
       operationId: api_users_crud_retrieve
-      description: Recupera los detalles de un usuario específico por ID.
+      description: |-
+        Gestiona el ciclo de vida completo de los usuarios.
+        Solo accesible para administradores.
       summary: Obtener usuario
       parameters:
       - in: path
         name: id
         schema:
           type: integer
-        description: A unique integer value identifying this user.
+        description: Un valor de entero único que identifique este usuario.
         required: true
       tags:
       - Usuarios
@@ -77,14 +83,16 @@ paths:
           description: ''
     put:
       operationId: api_users_crud_update
-      description: Actualización completa de un usuario.
+      description: |-
+        Gestiona el ciclo de vida completo de los usuarios.
+        Solo accesible para administradores.
       summary: Actualizar usuario
       parameters:
       - in: path
         name: id
         schema:
           type: integer
-        description: A unique integer value identifying this user.
+        description: Un valor de entero único que identifique este usuario.
         required: true
       tags:
       - Usuarios
@@ -115,12 +123,13 @@ paths:
       description: |-
         Gestiona el ciclo de vida completo de los usuarios.
         Solo accesible para administradores.
+      summary: Actualizar parcialmente un usuario
       parameters:
       - in: path
         name: id
         schema:
           type: integer
-        description: A unique integer value identifying this user.
+        description: Un valor de entero único que identifique este usuario.
         required: true
       tags:
       - Usuarios
@@ -147,14 +156,16 @@ paths:
           description: ''
     delete:
       operationId: api_users_crud_destroy
-      description: Borra permanentemente un usuario.
+      description: |-
+        Gestiona el ciclo de vida completo de los usuarios.
+        Solo accesible para administradores.
       summary: Eliminar usuario
       parameters:
       - in: path
         name: id
         schema:
           type: integer
-        description: A unique integer value identifying this user.
+        description: Un valor de entero único que identifique este usuario.
         required: true
       tags:
       - Usuarios
@@ -285,25 +296,27 @@ components:
           readOnly: true
         username:
           type: string
-          description: Required. 150 characters or fewer. Letters, digits and @/./+/-/_
-            only.
+          title: Nombre de usuario
+          description: 'Requerido. 150 carácteres como máximo. Únicamente letras,
+            dígitos y @/./+/-/_ '
           pattern: ^[\w.@+-]+$
           maxLength: 150
         email:
           type: string
           format: email
-          title: Email address
+          title: Dirección de correo electrónico
           maxLength: 254
         first_name:
           type: string
+          title: Nombre
           maxLength: 150
         last_name:
           type: string
+          title: Apellidos
           maxLength: 150
         password:
           type: string
           writeOnly: true
-          maxLength: 128
     TokenRefresh:
       type: object
       properties:
@@ -324,25 +337,27 @@ components:
           readOnly: true
         username:
           type: string
-          description: Required. 150 characters or fewer. Letters, digits and @/./+/-/_
-            only.
+          title: Nombre de usuario
+          description: 'Requerido. 150 carácteres como máximo. Únicamente letras,
+            dígitos y @/./+/-/_ '
           pattern: ^[\w.@+-]+$
           maxLength: 150
         email:
           type: string
           format: email
-          title: Email address
+          title: Dirección de correo electrónico
           maxLength: 254
         first_name:
           type: string
+          title: Nombre
           maxLength: 150
         last_name:
           type: string
+          title: Apellidos
           maxLength: 150
         password:
           type: string
           writeOnly: true
-          maxLength: 128
       required:
       - id
       - password

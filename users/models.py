@@ -1,3 +1,1 @@
-from django.db import models
-
-# Create your models here.
+"""Esta app reutiliza el modelo User nativo y no define modelos propios."""

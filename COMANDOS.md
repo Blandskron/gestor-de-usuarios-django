@@ -1,28 +1,32 @@
-# Guía de Comandos y Puesta en Marcha
+# Comandos rápidos
 
-Sigue estos pasos en orden para levantar el entorno de desarrollo localmente.
+La explicación completa está en `README.md`. Esta hoja sirve como referencia
+durante el laboratorio.
 
-### 1. Entorno Virtual y Dependencias
-Crea y activa tu entorno virtual, luego instala las dependencias necesarias:
 ```bash
-python -m venv venv
-
-# En Windows:
-venv\Scripts\activate 
-# En macOS/Linux usarías: source venv/bin/activate
-
-pip install djangorestframework drf-spectacular djangorestframework-simplejwt cryptography
-```
-
-### 2. Base de datos y Migraciones
-Aplica las migraciones para crear las tablas de usuarios y de la lista negra (Blacklist) de JWT.
-```bash
+# Preparación local
+python -m venv .venv
+python -m pip install -r requirements.txt
 python manage.py migrate
+python manage.py createsuperuser
+
+# Desarrollo
+python manage.py runserver
+python manage.py ensure_superuser
+
+# Validación
+python manage.py check
+python manage.py makemigrations --check --dry-run
+python manage.py test
+python manage.py spectacular --validate --file "API de Gestión de Usuarios.yaml"
+
+# Docker
+docker compose up --build
+docker compose logs -f web
+docker compose exec web python manage.py test
+docker compose down
 ```
 
-### 3. Creación del Administrador y Ejecución
-Crea tu primer usuario administrador (necesario para usar el CRUD) e inicia el servidor de desarrollo.
-```bash
-python manage.py createsuperuser
-python manage.py runserver
-```
+`ensure_superuser` solo crea la cuenta si están definidas las tres variables
+`DJANGO_SUPERUSER_USERNAME`, `DJANGO_SUPERUSER_EMAIL` y
+`DJANGO_SUPERUSER_PASSWORD`. Volver a ejecutarlo no crea duplicados.

@@ -1,56 +1,75 @@
-# Arquitectura y Documentación Técnica
+# Arquitectura y seguridad
 
-Este documento detalla las decisiones arquitectónicas y el modelo de seguridad implementado en el **Gestor de Usuarios API REST**.
+## Alcance
 
----
+El repositorio es una API monolítica educativa. `core` configura Django,
+`users` contiene el contrato HTTP y `docs` publica OpenAPI. Se reutiliza el
+modelo `django.contrib.auth.models.User`; `users/models.py` permanece vacío de
+forma intencional y no necesita migraciones propias.
 
-## 1. Arquitectura de Autenticación y Seguridad
+## Autenticación JWT con RS256
 
-Hemos abandonado la autenticación básica o por tokens opacos en favor de un enfoque *Stateless* robusto basado en **JSON Web Tokens (JWT) asimétricos**.
+SimpleJWT emite un access token de 60 minutos y un refresh token de un día. El
+servidor firma con una clave RSA privada y valida con la pública. El par se crea
+en `JWT_KEY_DIR` al primer arranque, nunca se guarda en Git y persiste en el
+volumen Docker.
 
-### 1.1 Firmas Asimétricas (RS256)
-En lugar de utilizar el algoritmo tradicional HS256 (que usa una única clave secreta), empleamos **RS256**.
-- **Cómo funciona:** El servidor utiliza una llave privada (`private.pem`) para firmar los tokens emitidos en el Login.
-- **Ventaja técnica:** Permite que en el futuro un sistema externo (como un microservicio de frontend o un gateway de API) valide la autenticidad del token utilizando **únicamente la llave pública** (`public.pem`), sin necesidad de conocer los secretos de nuestra aplicación.
-- **Automatización:** El archivo `core/settings.py` incluye un script con la librería `cryptography` que detecta la ausencia de estas llaves y las genera dinámicamente en formato *TraditionalOpenSSL* a 2048 bits en el primer arranque.
+`MyTokenObtainPairSerializer` añade `username`, grupos y permisos al payload.
+Estos claims son útiles para interfaces cliente, pero la autorización real se
+vuelve a comprobar en el servidor mediante `IsAdminUser`; nunca debe confiarse
+solo en datos decodificados por el navegador.
 
-### 1.2 Mitigación de Vulnerabilidades (CSRF)
-Al enviar tokens a clientes web (navegadores), existe riesgo de ataques XSS y CSRF.
-Para mitigar esto, en la vista de Login (`LoginView`), el servidor devuelve el JWT, pero también acopla la petición con `SessionAuthentication` nativo de Django, configurando una cookie `csrftoken`. 
-Esto asegura que las solicitudes posteriores desde un navegador requieran pasar el chequeo de origen cruzado de Django.
+Logout agrega el refresh token a las tablas de blacklist. Un access token ya
+emitido sigue siendo válido hasta expirar, por eso su vida es corta. El cliente
+debe borrar ambos tokens al cerrar sesión.
 
-### 1.3 Blacklisting de Tokens en Logout
-Debido a que los JWT son *stateless* (sin estado), por defecto no pueden ser destruidos en el servidor antes de su fecha de expiración. 
-Implementamos el módulo `token_blacklist` de SimpleJWT. Durante el proceso de *Logout*, el Refresh Token suministrado por el cliente se introduce en una base de datos de tokens en lista negra, cortando inmediatamente cualquier intento futuro de obtener nuevos accesos con esa sesión.
+## Sesiones y CSRF
 
----
+DRF admite JWT mediante header y sesiones para el navegador de la API. Los
+headers Bearer no son enviados automáticamente por el navegador y no dependen
+de CSRF. Cuando se autentica con una cookie de sesión, `SessionAuthentication`
+sí exige un token CSRF en métodos inseguros. Emitir una cookie `csrftoken` junto
+al JWT no convierte por sí solo a JWT en una estrategia CSRF.
 
-## 2. Inyección de Claims (RBAC)
+La seguridad frente a XSS depende de cómo el cliente almacene los tokens y está
+fuera del alcance de este backend. Una aplicación web real debe definir una
+estrategia explícita de almacenamiento y una política de contenido.
 
-Hemos personalizado el serializador `MyTokenObtainPairSerializer` para enriquecer el payload del Access Token. Cuando un cliente decodifica el token en Base64, observará lo siguiente:
+## CRUD y contraseñas
 
-```json
-{
-  "token_type": "access",
-  "exp": 1711000000,
-  "user_id": 1,
-  "username": "admin",
-  "grupos": ["Editores", "Auditores"],
-  "permisos": ["users.add_user", "users.change_user"]
-}
-```
-*Nota: Si el usuario es un cliente estándar sin roles administrativos, el sistema devuelve proactivamente `grupos: []` y `permisos: []` para evitar errores de `undefined` en el parseo del lado del Frontend.*
+`UserViewSet` usa `ModelViewSet`, por lo que DRF proporciona list, create,
+retrieve, update, partial update y destroy. `IsAdminUser` exige `is_staff`; no
+basta con estar autenticado.
 
----
+`UserSerializer` ejecuta los validadores configurados por Django y usa
+`create_user`/`set_password`. Guardar el texto directamente en el campo
+`password` rompería autenticación y expondría la contraseña.
 
-## 3. Estructura de Endpoints
+## Configuración
 
-| Endpoint | Método | Descripción | Permisos |
-|----------|--------|-------------|----------|
-| `/api/users/login/` | `POST` | Emite Access y Refresh tokens. | Público |
-| `/api/users/logout/` | `POST` | Invalida el Refresh token. | Autenticado |
-| `/api/users/token/refresh/` | `POST` | Renueva el Access token usando el Refresh. | Público (Requiere Token) |
-| `/api/users/crud/` | `GET`, `POST` | Lista o crea nuevos usuarios. | Administrador |
-| `/api/users/crud/<id>/` | `GET`, `PUT`, `DELETE`| Modifica un usuario específico. | Administrador |
+`core/settings.py` incluye defaults explícitos para local y variables para los
+valores que varían. SQLite se eligió porque el laboratorio tiene un servicio y
+no enseña concurrencia de base de datos. En un despliegue real se deben definir
+secreto, hosts, HTTPS, cookies seguras y una base administrada, además de usar un
+servidor WSGI/ASGI de producción en lugar de `runserver`.
 
-Todo el CRUD se expone a través del poderoso `ModelViewSet` y está completamente documentado con el estándar **OpenAPI 3.0** servido vía Swagger/ReDoc.
+## Docker
+
+La imagen usa Python 3.12 slim y un usuario sin privilegios. El volumen
+`django_data` contiene `db.sqlite3` y las claves; el código vive en la imagen.
+El entrypoint ejecuta, de forma visible y ordenada:
+
+1. `migrate --noinput`;
+2. `ensure_superuser`;
+3. el comando configurado en `CMD`.
+
+Esta automatización es idempotente y evita ocultar lógica en `settings.py`.
+
+## Límites conocidos
+
+- `runserver` y SQLite son apropiados para el laboratorio, no para producción;
+- no existe registro público: solo un administrador crea usuarios;
+- logout no revoca access tokens ya emitidos;
+- una clave privada existió en el historial inicial y debe considerarse
+  comprometida; la versión actual genera un par nuevo fuera de Git, pero limpiar
+  historia requiere una operación coordinada y destructiva que no se realiza aquí.
